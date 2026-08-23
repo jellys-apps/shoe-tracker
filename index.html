@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>러닝화 마일리지 & 데이터 트래커</title>
+  <!-- Chart.js 라이브러리 (그래프용) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --bg: #0b132b;
+      --card-bg: #1c2541;
+      --card-inner: #0f172a;
+      --accent-blue: #38bdf8;
+      --accent-green: #22c55e;
+      --accent-orange: #f97316;
+      --accent-red: #ef4444;
+      --text: #f8fafc;
+      --text-sub: #94a3b8;
+      --border: #334155;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background: var(--bg); color: var(--text); max-width: 480px; margin: 0 auto; padding-bottom: 80px; min-height: 100vh; }
+
+    /* 헤더 */
+    header { padding: 20px 16px 12px; text-align: center; border-bottom: 1px solid var(--border); }
+    header h1 { font-size: 1.25rem; font-weight: 800; color: #fff; letter-spacing: -0.5px; }
+
+    /* 탭 콘텐츠 컨테이너 */
+    .tab-content { display: none; padding: 16px; animation: fadeIn 0.2s ease-in-out; }
+    .tab-content.active { display: block; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* 카드 공통 */
+    .card { background: var(--card-bg); border-radius: 20px; padding: 18px; margin-bottom: 16px; border: 1px solid var(--border); box-shadow: 0 8px 20px rgba(0,0,0,0.2); }
+    .card-title { font-size: 0.95rem; font-weight: 700; margin-bottom: 12px; color: var(--text); display: flex; justify-content: space-between; align-items: center; }
+
+    /* 메인: 신발 수명 게이지 */
+    .shoe-info { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 8px; }
+    .shoe-name { font-size: 1.1rem; font-weight: 800; color: #fff; }
+    .shoe-pct { font-size: 0.9rem; font-weight: 700; color: var(--accent-green); }
+    .progress-bg { background: var(--card-inner); height: 16px; border-radius: 8px; overflow: hidden; margin: 8px 0 12px; border: 1px solid var(--border); }
+    .progress-fill { background: var(--accent-green); height: 100%; width: 0%; transition: width 0.5s ease; }
+    .shoe-metrics { display: flex; justify-content: space-between; font-size: 0.82rem; color: var(--text-sub); }
+    .shoe-metrics strong { color: var(--text); font-weight: 700; }
+
+    /* 평생 누적 통계 */
+    .stats-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 10px; }
+    .stat-box { background: var(--card-inner); padding: 12px 8px; border-radius: 12px; text-align: center; border: 1px solid var(--border); }
+    .stat-box .num { font-size: 1.05rem; font-weight: 800; color: var(--accent-blue); margin-top: 2px; }
+    .stat-box .lbl { font-size: 0.72rem; color: var(--text-sub); }
+
+    /* 입력 폼 */
+    .input-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+    .field label { display: block; font-size: 0.75rem; color: var(--text-sub); margin-bottom: 4px; font-weight: 600; }
+    .field input { width: 100%; background: var(--card-inner); border: 1px solid var(--border); border-radius: 10px; padding: 10px; font-size: 1.05rem; font-weight: 700; color: #fff; text-align: center; outline: none; }
+    .field input:focus { border-color: var(--accent-blue); }
+    .btn-add { background: var(--accent-blue); color: #0b132b; border: none; width: 100%; padding: 12px; border-radius: 12px; font-size: 0.95rem; font-weight: 800; cursor: pointer; }
+
+    /* 통계 탭: 필터 버튼 */
+    .filter-group { display: flex; background: var(--card-inner); border-radius: 10px; padding: 3px; border: 1px solid var(--border); margin-bottom: 16px; }
+    .btn-filter { flex: 1; background: transparent; border: none; color: var(--text-sub); padding: 8px 0; font-size: 0.8rem; font-weight: 700; border-radius: 8px; cursor: pointer; }
+    .btn-filter.active { background: var(--card-bg); color: var(--accent-blue); shadow: 0 2px 4px rgba(0,0,0,0.2); }
+
+    /* 캘린더 탭 */
+    .calendar-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; font-weight: 700; }
+    .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; text-align: center; }
+    .cal-day-label { font-size: 0.75rem; color: var(--text-sub); padding: 6px 0; font-weight: 700; }
+    .cal-cell { aspect-ratio: 1; background: var(--card-inner); border-radius: 8px; border: 1px solid var(--border); font-size: 0.8rem; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; cursor: pointer; }
+    .cal-cell.has-run { border-color: var(--accent-green); background: rgba(34, 197, 94, 0.1); }
+    .cal-dot { width: 4px; height: 4px; background: var(--accent-green); border-radius: 50%; margin-top: 2px; }
+
+    /* 하단 탭바 Nav */
+    nav { position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); width: 100%; max-width: 480px; background: var(--card-bg); border-top: 1px solid var(--border); display: flex; justify-content: space-around; padding: 10px 0; z-index: 100; }
+    .nav-btn { background: none; border: none; color: var(--text-sub); font-size: 0.75rem; font-weight: 700; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; flex: 1; }
+    .nav-btn .icon { font-size: 1.2rem; }
+    .nav-btn.active { color: var(--accent-blue); }
+
+    /* 최근 기록 히스토리 */
+    .history-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; background: var(--card-inner); border-radius: 10px; margin-bottom: 8px; border: 1px solid var(--border); font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>🏃‍♂️ 러닝화 & 마일리지 트래커</h1>
+  </header>
+
+  <!-- 1. 메인 탭 (대시보드) -->
+  <div id="tab-main" class="tab-content active">
+    <!-- 신발 수명 카드 -->
+    <div class="card">
+      <div class="shoe-info">
+        <div class="shoe-name">👟 브룩스 아드레날린 GTS</div>
+        <div class="shoe-pct" id="shoePct">0.0%</div>
+      </div>
+      <div class="progress-bg">
+        <div class="progress-fill" id="shoeBar"></div>
+      </div>
+      <div class="shoe-metrics">
+        <span>현재: <strong id="shoeCurrent">0.00</strong> / 800 km</span>
+        <span>남은 수명: <strong id="shoeRemain" style="color:var(--accent-blue)">800.00</strong> km</span>
+      </div>
+    </div>
+
+    <!-- 평생 누적 통계 -->
+    <div class="card">
+      <div class="card-title">🌐 평생 누적 통계 (신발 교체 시 유지)</div>
+      <div class="stats-grid">
+        <div class="stat-box">
+          <div class="lbl">총 거리</div>
+          <div class="num" id="totalKm">0.0km</div>
+        </div>
+        <div class="stat-box">
+          <div class="lbl">총 칼로리</div>
+          <div class="num" id="totalCal" style="color:var(--accent-green)">0kcal</div>
+        </div>
+        <div class="stat-box">
+          <div class="lbl">총 횟수</div>
+          <div class="num" id="totalCount" style="color:#a855f7">0회</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 간편 기록 입력 -->
+    <div class="card">
+      <div class="card-title">⚡ Today's Running 기록</div>
+      <div class="input-grid">
+        <div class="field">
+          <label>달린 거리 (km)</label>
+          <input type="number" id="inputDist" step="0.01" placeholder="3.45" inputmode="decimal">
+        </div>
+        <div class="field">
+          <label>소모 칼로리 (kcal)</label>
+          <input type="number" id="inputCal" placeholder="250" inputmode="numeric">
+        </div>
+      </div>
+      <button class="btn-add" onclick="saveRecord()">기록 저장하기</button>
+    </div>
+
+    <!-- 최근 기록 -->
+    <div class="card">
+      <div class="card-title">📋 최근 기록</div>
+      <div id="recentList"></div>
+    </div>
+  </div>
+
+  <!-- 2. 통계 탭 (그래프) -->
+  <div id="tab-stats" class="tab-content">
+    <div class="filter-group">
+      <button class="btn-filter active" onclick="setChartFilter('day', this)">일별</button>
+      <button class="btn-filter" onclick="setChartFilter('week', this)">주간</button>
+      <button class="btn-filter" onclick="setChartFilter('month', this)">월간</button>
+      <button class="btn-filter" onclick="setChartFilter('year', this)">연간</button>
+    </div>
+    <div class="card">
+      <div class="card-title">📊 거리 추이 (km)</div>
+      <canvas id="runChart" height="200"></canvas>
+    </div>
+  </div>
+
+  <!-- 3. 달력 탭 -->
+  <div id="tab-calendar" class="tab-content">
+    <div class="card">
+      <div class="calendar-head">
+        <button onclick="prevMonth()" style="background:none; border:none; color:#fff; cursor:pointer;">◀</button>
+        <span id="calMonthTitle">2026년 8월</span>
+        <button onclick="nextMonth()" style="background:none; border:none; color:#fff; cursor:pointer;">▶</button>
+      </div>
+      <div class="calendar-grid">
+        <div class="cal-day-label" style="color:#ef4444">일</div>
+        <div class="cal-day-label">월</div>
+        <div class="cal-day-label">화</div>
+        <div class="cal-day-label">수</div>
+        <div class="cal-day-label">목</div>
+        <div class="cal-day-label">금</div>
+        <div class="cal-day-label">토</div>
+      </div>
+      <div class="calendar-grid" id="calDaysGrid" style="margin-top:4px;"></div>
+    </div>
+  </div>
+
+  <!-- 하단 탭바 Navigation -->
+  <nav>
+    <button class="nav-btn active" onclick="switchTab('main', this)">
+      <span class="icon">🏠</span>
+      <span>메인</span>
+    </button>
+    <button class="nav-btn" onclick="switchTab('stats', this)">
+      <span class="icon">📊</span>
+      <span>통계</span>
+    </button>
+    <button class="nav-btn" onclick="switchTab('calendar', this)">
+      <span class="icon">📅</span>
+      <span>달력</span>
+    </button>
+  </nav>
+
+  <script>
+    const TARGET_KM = 800;
+    let records = JSON.parse(localStorage.getItem('my_run_records')) || [];
+    let myChart = null;
+    let currentCalDate = new Date();
+
+    // 탭 전환
+    function switchTab(tabName, btn) {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active'));
+      document.getElementById(`tab-${tabName}`).classList.add('active');
+      btn.classList.add('active');
+
+      if(tabName === 'stats') renderChart('day');
+      if(tabName === 'calendar') renderCalendar();
+    }
+
+    // 데이터 저장 & UI 업데이트
+    function updateDashboard() {
+      const totalKmVal = records.reduce((acc, cur) => acc + Number(cur.dist), 0);
+      const totalCalVal = records.reduce((acc, cur) => acc + Number(cur.cal), 0);
+
+      // 메인 카드
+      const remainKm = Math.max(0, TARGET_KM - totalKmVal);
+      const pct = Math.min(100, (totalKmVal / TARGET_KM) * 100);
+
+      document.getElementById('shoeCurrent').innerText = totalKmVal.toFixed(2);
+      document.getElementById('shoeRemain').innerText = remainKm.toFixed(2);
+      document.getElementById('shoePct').innerText = `${pct.toFixed(1)}%`;
+      
+      const bar = document.getElementById('shoeBar');
+      bar.style.width = `${pct}%`;
+      bar.style.background = pct >= 90 ? 'var(--accent-red)' : pct >= 70 ? 'var(--accent-orange)' : 'var(--accent-green)';
+
+      // 평생 통계
+      document.getElementById('totalKm').innerText = `${totalKmVal.toFixed(1)}km`;
+      document.getElementById('totalCal').innerText = `${totalCalVal.toLocaleString()}kcal`;
+      document.getElementById('totalCount').innerText = `${records.length}회`;
+
+      // 최근 기록 목록
+      const recentEl = document.getElementById('recentList');
+      if(records.length === 0) {
+        recentEl.innerHTML = '<div style="color:var(--text-sub); font-size:0.8rem; text-align:center; padding:10px;">기록이 없습니다.</div>';
+      } else {
+        recentEl.innerHTML = '';
+        [...records].reverse().slice(0, 3).forEach((r, idx) => {
+          recentEl.innerHTML += `
+            <div class="history-item">
+              <div><strong>${r.dist} km</strong> <span style="color:var(--accent-green); font-size:0.75rem;">(${r.cal} kcal)</span></div>
+              <div style="color:var(--text-sub); font-size:0.75rem;">${r.date}</div>
+            </div>
+          `;
+        });
+      }
+    }
+
+    function saveRecord() {
+      const dist = parseFloat(document.getElementById('inputDist').value);
+      const cal = parseInt(document.getElementById('inputCal').value) || 0;
+      if(!dist || dist <= 0) return alert('거리를 올바르게 입력해주세요!');
+
+      const today = new Date();
+      const dateStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+
+      records.push({ dist, cal, date: dateStr });
+      localStorage.setItem('my_run_records', JSON.stringify(records));
+
+      document.getElementById('inputDist').value = '';
+      document.getElementById('inputCal').value = '';
+      updateDashboard();
+      alert('기록이 저장되었습니다!');
+    }
+
+    // 그래프 그리기 (Chart.js)
+    function renderChart(filter) {
+      const ctx = document.getElementById('runChart').getContext('2d');
+      if(myChart) myChart.destroy();
+
+      // 샘플 데이터 매핑 (실제 데이터 기반)
+      const labels = records.length ? records.map(r => r.date.slice(5)) : ['08-20', '08-21', '08-22', '08-23'];
+      const dataVals = records.length ? records.map(r => r.dist) : [0, 0, 0, 0];
+
+      myChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: '달린 거리 (km)',
+            data: dataVals,
+            backgroundColor: '#38bdf8',
+            borderRadius: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { grid: { display: false }, ticks: { color: '#94a3b8' } },
+            y: { grid: { color: '#334155' }, ticks: { color: '#94a3b8' } }
+          }
+        }
+      });
+    }
+
+    function setChartFilter(type, btn) {
+      document.querySelectorAll('.btn-filter').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderChart(type);
+    }
+
+    // 캘린더 그리기
+    function renderCalendar() {
+      const year = currentCalDate.getFullYear();
+      const month = currentCalDate.getMonth();
+      document.getElementById('calMonthTitle').innerText = `${year}년 ${month + 1}월`;
+
+      const firstDay = new Date(year, month, 1).getDay();
+      const lastDate = new Date(year, month + 1, 0).getDate();
+      const grid = document.getElementById('calDaysGrid');
+      grid.innerHTML = '';
+
+      for(let i=0; i<firstDay; i++) {
+        grid.innerHTML += '<div></div>';
+      }
+
+      for(let d=1; d<=lastDate; d++) {
+        const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        const hasRun = records.some(r => r.date === dateStr);
+        
+        grid.innerHTML += `
+          <div class="cal-cell ${hasRun ? 'has-run' : ''}">
+            <span>${d}</span>
+            ${hasRun ? '<div class="cal-dot"></div>' : ''}
+          </div>
+        `;
+      }
+    }
+
+    function prevMonth() { currentCalDate.setMonth(currentCalDate.getMonth() - 1); renderCalendar(); }
+    function nextMonth() { currentCalDate.setMonth(currentCalDate.getMonth() + 1); renderCalendar(); }
+
+    // 초기화
+    updateDashboard();
+  </script>
+</body>
+</html>
