@@ -78,6 +78,27 @@
 
     /* 최근 기록 히스토리 */
     .history-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; background: var(--card-inner); border-radius: 10px; margin-bottom: 8px; border: 1px solid var(--border); font-size: 0.85rem; }
+    .history-actions { display: flex; gap: 6px; }
+    .icon-btn { background: none; border: none; color: var(--text-sub); font-size: 0.95rem; cursor: pointer; padding: 2px 4px; }
+    .icon-btn:hover { color: var(--text); }
+
+    /* 날짜 상세 모달 */
+    .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 200; align-items: flex-end; justify-content: center; }
+    .modal-overlay.active { display: flex; }
+    .modal-sheet { background: var(--card-bg); width: 100%; max-width: 480px; border-radius: 20px 20px 0 0; padding: 18px; max-height: 85vh; overflow-y: auto; }
+    .modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+    .modal-head h3 { font-size: 1rem; font-weight: 800; }
+    .modal-close { background: none; border: none; color: var(--text-sub); font-size: 1.3rem; cursor: pointer; }
+    .modal-record { background: var(--card-inner); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; }
+    .modal-record-view { display: flex; justify-content: space-between; align-items: center; }
+    .modal-edit-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+    .modal-edit-grid input { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px; font-size: 0.95rem; font-weight: 700; color: #fff; text-align: center; }
+    .modal-edit-actions { display: flex; gap: 8px; margin-top: 8px; }
+    .btn-small { flex: 1; border: none; border-radius: 8px; padding: 8px; font-weight: 700; font-size: 0.82rem; cursor: pointer; }
+    .btn-save-small { background: var(--accent-blue); color: var(--bg); }
+    .btn-cancel-small { background: var(--border); color: var(--text); }
+    .add-day-form { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 14px; }
+    .add-day-form .input-grid { margin-bottom: 10px; }
   </style>
 </head>
 <body>
@@ -126,6 +147,10 @@
     <div class="card">
       <div class="card-title">⚡ Today's Running 기록</div>
       <div class="input-grid">
+        <div class="field" style="grid-column: 1 / -1;">
+          <label>날짜</label>
+          <input type="date" id="inputDate">
+        </div>
         <div class="field">
           <label>달린 거리 (km)</label>
           <input type="number" id="inputDist" step="0.01" placeholder="3.45" inputmode="decimal">
@@ -177,6 +202,32 @@
         <div class="cal-day-label">토</div>
       </div>
       <div class="calendar-grid" id="calDaysGrid" style="margin-top:4px;"></div>
+      <div style="text-align:center; color:var(--text-sub); font-size:0.75rem; margin-top:10px;">날짜를 탭하면 그날의 기록을 보거나 추가/수정할 수 있어요</div>
+    </div>
+  </div>
+
+  <!-- 날짜 상세 / 기록 추가·수정 모달 -->
+  <div class="modal-overlay" id="dayModal">
+    <div class="modal-sheet">
+      <div class="modal-head">
+        <h3 id="modalDateTitle">2026-08-20</h3>
+        <button class="modal-close" onclick="closeDayModal()">✕</button>
+      </div>
+      <div id="modalRecordList"></div>
+      <div class="add-day-form">
+        <div class="card-title" style="margin-bottom:8px;">➕ 이 날짜에 기록 추가</div>
+        <div class="input-grid">
+          <div class="field">
+            <label>달린 거리 (km)</label>
+            <input type="number" id="modalNewDist" step="0.01" placeholder="3.45" inputmode="decimal">
+          </div>
+          <div class="field">
+            <label>소모 칼로리 (kcal)</label>
+            <input type="number" id="modalNewCal" placeholder="250" inputmode="numeric">
+          </div>
+        </div>
+        <button class="btn-add" onclick="addRecordForModalDate()">이 날짜로 저장하기</button>
+      </div>
     </div>
   </div>
 
@@ -201,6 +252,21 @@
     let records = JSON.parse(localStorage.getItem('my_run_records')) || [];
     let myChart = null;
     let currentCalDate = new Date();
+    let modalDateStr = null;
+
+    // 기존 데이터 중 id가 없는 항목에 id 부여 (기존 기록은 그대로 유지)
+    (function ensureIds() {
+      let changed = false;
+      records.forEach((r, idx) => {
+        if (!r.id) { r.id = `${r.date}-${idx}-${Date.now()}${idx}`; changed = true; }
+      });
+      if (changed) localStorage.setItem('my_run_records', JSON.stringify(records));
+    })();
+
+    function todayStr() {
+      const t = new Date();
+      return `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`;
+    }
 
     // 탭 전환
     function switchTab(tabName, btn) {
@@ -241,11 +307,14 @@
         recentEl.innerHTML = '<div style="color:var(--text-sub); font-size:0.8rem; text-align:center; padding:10px;">기록이 없습니다.</div>';
       } else {
         recentEl.innerHTML = '';
-        [...records].reverse().slice(0, 3).forEach((r, idx) => {
+        [...records].reverse().slice(0, 3).forEach((r) => {
           recentEl.innerHTML += `
             <div class="history-item">
               <div><strong>${r.dist} km</strong> <span style="color:var(--accent-green); font-size:0.75rem;">(${r.cal} kcal)</span></div>
-              <div style="color:var(--text-sub); font-size:0.75rem;">${r.date}</div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span style="color:var(--text-sub); font-size:0.75rem;">${r.date}</span>
+                <button class="icon-btn" onclick="openDayModal('${r.date}')" title="이 날짜 기록 보기/수정">✏️</button>
+              </div>
             </div>
           `;
         });
@@ -257,16 +326,107 @@
       const cal = parseInt(document.getElementById('inputCal').value) || 0;
       if(!dist || dist <= 0) return alert('거리를 올바르게 입력해주세요!');
 
-      const today = new Date();
-      const dateStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+      const dateStr = document.getElementById('inputDate').value || todayStr();
+      const id = `${dateStr}-${Date.now()}`;
 
-      records.push({ dist, cal, date: dateStr });
+      records.push({ id, dist, cal, date: dateStr });
       localStorage.setItem('my_run_records', JSON.stringify(records));
 
       document.getElementById('inputDist').value = '';
       document.getElementById('inputCal').value = '';
+      document.getElementById('inputDate').value = todayStr();
       updateDashboard();
       alert('기록이 저장되었습니다!');
+    }
+
+    // ── 날짜 상세 모달 ──────────────────────────
+    function openDayModal(dateStr) {
+      modalDateStr = dateStr;
+      document.getElementById('modalDateTitle').innerText = dateStr;
+      document.getElementById('modalNewDist').value = '';
+      document.getElementById('modalNewCal').value = '';
+      renderModalRecords();
+      document.getElementById('dayModal').classList.add('active');
+    }
+
+    function closeDayModal() {
+      document.getElementById('dayModal').classList.remove('active');
+      modalDateStr = null;
+    }
+
+    function renderModalRecords() {
+      const listEl = document.getElementById('modalRecordList');
+      const dayRecords = records.filter(r => r.date === modalDateStr);
+      if(dayRecords.length === 0) {
+        listEl.innerHTML = '<div style="color:var(--text-sub); font-size:0.85rem; padding:6px 0;">이 날짜에 기록이 없습니다. 아래에서 추가해보세요.</div>';
+        return;
+      }
+      listEl.innerHTML = '';
+      dayRecords.forEach(r => {
+        listEl.innerHTML += `
+          <div class="modal-record" id="rec-${r.id}">
+            <div class="modal-record-view" id="view-${r.id}">
+              <div><strong>${r.dist} km</strong> <span style="color:var(--accent-green); font-size:0.8rem;">(${r.cal} kcal)</span></div>
+              <div class="history-actions">
+                <button class="icon-btn" onclick="startEditRecord('${r.id}')" title="수정">✏️</button>
+                <button class="icon-btn" onclick="deleteRecord('${r.id}')" title="삭제">🗑️</button>
+              </div>
+            </div>
+          </div>
+        `;
+      });
+    }
+
+    function startEditRecord(id) {
+      const r = records.find(x => x.id === id);
+      if(!r) return;
+      const target = document.getElementById(`rec-${id}`);
+      target.innerHTML = `
+        <div class="modal-edit-grid">
+          <input type="number" id="edit-dist-${id}" step="0.01" value="${r.dist}" inputmode="decimal">
+          <input type="number" id="edit-cal-${id}" value="${r.cal}" inputmode="numeric">
+        </div>
+        <div class="modal-edit-actions">
+          <button class="btn-small btn-save-small" onclick="saveEditRecord('${id}')">저장</button>
+          <button class="btn-small btn-cancel-small" onclick="renderModalRecords()">취소</button>
+        </div>
+      `;
+    }
+
+    function saveEditRecord(id) {
+      const r = records.find(x => x.id === id);
+      if(!r) return;
+      const newDist = parseFloat(document.getElementById(`edit-dist-${id}`).value);
+      const newCal = parseInt(document.getElementById(`edit-cal-${id}`).value) || 0;
+      if(!newDist || newDist <= 0) return alert('거리를 올바르게 입력해주세요!');
+      r.dist = newDist;
+      r.cal = newCal;
+      localStorage.setItem('my_run_records', JSON.stringify(records));
+      renderModalRecords();
+      updateDashboard();
+    }
+
+    function deleteRecord(id) {
+      if(!confirm('이 기록을 삭제할까요?')) return;
+      records = records.filter(r => r.id !== id);
+      localStorage.setItem('my_run_records', JSON.stringify(records));
+      renderModalRecords();
+      updateDashboard();
+      renderCalendar();
+    }
+
+    function addRecordForModalDate() {
+      const dist = parseFloat(document.getElementById('modalNewDist').value);
+      const cal = parseInt(document.getElementById('modalNewCal').value) || 0;
+      if(!dist || dist <= 0) return alert('거리를 올바르게 입력해주세요!');
+      const id = `${modalDateStr}-${Date.now()}`;
+      records.push({ id, dist, cal, date: modalDateStr });
+      localStorage.setItem('my_run_records', JSON.stringify(records));
+      document.getElementById('modalNewDist').value = '';
+      document.getElementById('modalNewCal').value = '';
+      renderModalRecords();
+      updateDashboard();
+      renderCalendar();
     }
 
     // 그래프 그리기 (Chart.js)
@@ -326,7 +486,7 @@
         const hasRun = records.some(r => r.date === dateStr);
         
         grid.innerHTML += `
-          <div class="cal-cell ${hasRun ? 'has-run' : ''}">
+          <div class="cal-cell ${hasRun ? 'has-run' : ''}" onclick="openDayModal('${dateStr}')">
             <span>${d}</span>
             ${hasRun ? '<div class="cal-dot"></div>' : ''}
           </div>
@@ -338,6 +498,7 @@
     function nextMonth() { currentCalDate.setMonth(currentCalDate.getMonth() + 1); renderCalendar(); }
 
     // 초기화
+    document.getElementById('inputDate').value = todayStr();
     updateDashboard();
   </script>
 </body>
